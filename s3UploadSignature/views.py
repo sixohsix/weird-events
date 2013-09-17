@@ -9,8 +9,15 @@ But then I Django'ed it.
 import time, os, json, base64, urllib, hmac, sha
 
 from django.conf import settings
+from django.http import HttpResponse
 
 from .forms import S3UploadForm
+
+def as_json(stuff, status):
+    return HttpResponse(
+        json.dumps(stuff),
+        status=status,
+        content_type='application/json')
 
 def s3_upload_signature(request):
     """
@@ -24,14 +31,15 @@ def s3_upload_signature(request):
     access_key = aws_upload.get("ACCESS_KEY_ID")
     secret_key = aws_upload.get("SECRET_ACCESS_KEY")
     if not (bucket_name and access_key and secret_key):
-        raise Exception(
-            "You need to set AWS_UPLOAD stuff in your settings.py file.")
+        return as_json({
+            "error": "You need to set AWS_UPLOAD stuff in your "
+                     "settings.py file."}, 500)
 
     form = S3UploadForm(data=request.REQUEST)
     if not form.is_valid():
-        return json.dumps({
+        return as_json({
             "error": "You need to call this with parameters for "
-                     "s3_object_name and s3_object_type"})
+                     "s3_object_name and s3_object_type"}, 400)
 
     object_name = form.cleaned_data["s3_object_name"]
     mime_type = form.cleaned_data["s3_object_type"]
@@ -53,7 +61,7 @@ def s3_upload_signature(request):
     sig = urllib.quote_plus(base64.encodestring(hmac.new(secret_key, str_to_sign, sha).digest()).strip())
 
     url = 'https://%s.s3.amazonaws.com/%s' % (bucket_name, object_name)
-    return json.dumps({
+    return as_json({
         'signed_request': '{url}?AWSAccessKeyId={access_key}&Expires={expires}&Signature={sig}'.format(
             url=url,
             access_key=access_key,
@@ -61,4 +69,4 @@ def s3_upload_signature(request):
             sig=sig
         ),
         'url': url
-    })
+    }, 200)
